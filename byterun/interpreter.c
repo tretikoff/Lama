@@ -7,6 +7,7 @@
 # include "../runtime/runtime.h"
 
 # define make_box(x) ((((int) (x)) << 1) | 0x0001)
+# define remove_box(x)    (((int) (x)) >> 1)
 
 void *__start_custom_data;
 void *__stop_custom_data;
@@ -74,12 +75,19 @@ bytefile *read_file(char *fname) {
     return file;
 }
 
+struct Function {
+    int *variables;
+    int *args;
+    int *c; // whatever this is
+};
+
 struct Stack {
     int *mem;
     int *sp;
 };
 
 struct Stack stack;
+struct Function function;
 
 int pop() {
     return *(stack.sp--);
@@ -91,8 +99,11 @@ void push(int v) {
 }
 
 void init() {
-    stack.sp = 0;
     stack.mem = malloc(1000000 * sizeof(int));
+    stack.sp = stack.mem;
+    function.args = 0;
+    function.variables = 0;
+    function.c = 0;
 }
 
 
@@ -105,18 +116,16 @@ void interpret(FILE *f, bytefile *bf) {
 # define STRING get_string (bf, INT)
 # define FAIL   failure ("ERROR: invalid opcode %d-%d\n", h, l)
 
-    char *ip = bf->code_ptr;
     char *ops[] = {"+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "!!"};
     char *pats[] = {"=str", "#string", "#array", "#sexp", "#ref", "#val", "#fun"};
     char *lds[] = {"LD", "LDA", "ST"};
+    char *ip = bf->code_ptr;
     do {
         char x = BYTE,
                 h = (x & 0xF0) >> 4,
                 l = x & 0x0F;
-        int a, b, value, res;
-        int* p;
-
-//        fprintf(f, "0x%.8x:\t", ip - bf->code_ptr - 1);
+        int a, b, value, res, n;
+        int *p;
 
         switch (h) {
             case 15:
@@ -239,13 +248,13 @@ void interpret(FILE *f, bytefile *bf) {
                         p = bf->global_ptr + INT;
                         break;
                     case 1: // L
-//                        p = bf->local_var + INT;
+                        p = function.variables + INT;
                         break;
                     case 2: // A
-//                        p = bf->args + INT;
+                        p = function.args + INT;
                         break;
                     case 3: // C
-//                        p = bf->c + INT; // TODO
+                        p = function.c + INT;
                         break;
                     default:
                         FAIL;
@@ -264,15 +273,23 @@ void interpret(FILE *f, bytefile *bf) {
 
             case 5:
                 switch (l) {
-                    case 0:
-                        fprintf(f, "CJMPz\t0x%.8x", INT);
+                    case 0: // CJMPz
+                        value = remove_box(pop());
+                        a = INT;
+                        if (!value) {
+                            ip = bf->code_ptr + a;
+                        }
                         break;
 
-                    case 1:
-                        fprintf(f, "CJMPnz\t0x%.8x", INT);
+                    case 1: // CJMPnz
+                        value = remove_box(pop());
+                        a = INT;
+                        if (value) {
+                            ip = bf->code_ptr + a;
+                        }
                         break;
 
-                    case 2:
+                    case 2: // begin
                         fprintf(f, "BEGIN\t%d ", INT);
                         fprintf(f, "%d", INT);
                         break;
@@ -346,23 +363,24 @@ void interpret(FILE *f, bytefile *bf) {
             case 7: {
                 switch (l) {
                     case 0:
-                        fprintf(f, "CALL\tLread");
+                        push(Lread());
                         break;
-
                     case 1:
-                        fprintf(f, "CALL\tLwrite");
+                        Lwrite(pop());
                         break;
 
                     case 2:
-                        fprintf(f, "CALL\tLlength");
+                        Llength(pop());
                         break;
 
                     case 3:
-                        fprintf(f, "CALL\tLstring");
+                        Lstring(pop());
                         break;
 
                     case 4:
-                        fprintf(f, "CALL\tBarray\t%d", INT);
+                        n = pop();
+                        // TODO where to get values to array
+//                        Barray(pop());
                         break;
 
                     default:
