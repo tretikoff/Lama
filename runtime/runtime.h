@@ -15,7 +15,8 @@
 # include <ctype.h>
 
 # define WORD_SIZE (CHAR_BIT * sizeof(int))
-
+void* Bsta (void *v, int i, void *x);
 void failure (char *s, ...);
+void* Belem (void *p, int i);
 
 # endif
