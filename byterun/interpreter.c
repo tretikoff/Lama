@@ -75,19 +75,23 @@ bytefile *read_file(char *fname) {
     return file;
 }
 
-typedef struct {
+typedef struct Function Function;
+
+struct Function {
     int *variables;
     int *args;
     int *c; // whatever this is
-} Function;
+    char* saved_ip;
+    Function *prev;
+};
 
 typedef struct {
     int *mem;
     int *sp;
 } Stack;
 
-Stack stack;
-Function function;
+Stack stack = {NULL, NULL};
+Function *function = NULL;
 
 int pop() {
     stack.sp--;
@@ -103,13 +107,10 @@ void push(int v) {
 void init() {
     stack.mem = malloc(1000000 * sizeof(int));
     stack.sp = stack.mem;
-    function.args = 0;
-    function.variables = 0;
-    function.c = 0;
 }
 
 void destruct() {
-    free(stack.mem);
+    // free(stack.mem);
 }
 
 
@@ -138,7 +139,6 @@ void interpret(FILE *f, bytefile *bf) {
                 goto stop;
 
             case 0: /* BINOP */
-                // fprintf(f, "binop\n");
                 b = remove_box(pop());
                 a = remove_box(pop());
                 res = 0;
@@ -151,7 +151,7 @@ void interpret(FILE *f, bytefile *bf) {
                     res = a * b;
                 } else if (strcmp(op, "/") == 0) {
                     res = a / b;
-                } else if (strcmp(op, "\%") == 0) {
+                } else if (strcmp(op, "%") == 0) {
                     res = a % b;
                 } else if (strcmp(op, "<") == 0) {
                     res = a < b;
@@ -181,7 +181,9 @@ void interpret(FILE *f, bytefile *bf) {
                         break;
 
                     case 1: // STRING
-                        push(STRING);
+                        res = Bstring(bf->string_ptr + INT);
+                        fprintf("String %d", res);
+                        push(res);
                         break;
 
                     case 2: // SEXP
@@ -199,8 +201,8 @@ void interpret(FILE *f, bytefile *bf) {
                     case 4: // STA
                         value = pop();
                         int i = pop();
-                        int mem = pop();
-                        push(Bsta(value, i, mem));
+                        int place = pop();
+                        push(Bsta(value, i, place));
                         break;
 
                     case 5: // JMP
@@ -208,13 +210,20 @@ void interpret(FILE *f, bytefile *bf) {
                         break;
 
                     case 6: // END
-                        // TODO how?
-                        return;
+                        if (function->prev == NULL) {
+                            return;
+                        }
+                        res = pop();
+                        stack.sp = function->args;
+                        ip = function->saved_ip;
+                        function = function->prev;
+                        push(res);
                         // fprintf(f, "END");
                         break;
 
                     case 7: // RET
-                        // TODO how?
+                        FAIL;
+                        // TODO 
                         return;
                         // fprintf(f, "RET");
                         break;
@@ -237,9 +246,10 @@ void interpret(FILE *f, bytefile *bf) {
                         break;
 
                     case 11: // ELEM
-                        a = pop();
                         b = pop();
-                        push(Belem(b, a));
+                        a = pop();
+                        push(Belem(a, b));
+                        // fprintf(f, "Elem = %d\n", b)
                         break;
 
                     default:
@@ -254,28 +264,34 @@ void interpret(FILE *f, bytefile *bf) {
                 p = 0;
                 switch (l) {
                     case 0: // G
+                        fprintf(f, "global ");
                         p = bf->global_ptr + INT;
                         break;
                     case 1: // L
-                        p = function.variables + INT;
+                        // fprintf(f, "local ");
+                        p = function->variables + INT;
                         break;
                     case 2: // A
-                        p = function.args + INT;
+                        // fprintf(f, "arg ");
+                        p = function->args + INT;
                         break;
                     case 3: // C
-                        p = function.c + INT;
+                        p = function->c + INT;
                         break;
                     default:
                         FAIL;
                 }
                 if (h == 2) { //LD
-                    push(*p);
+                    value = *p;
+                    printf("Loading %d\n", remove_box(value));
+                    push(value);
                 } else if (h == 3) {
                     push(p);
                     push(p);
                 } else if (h == 4) {//ST
                     res = pop();
-                    // fprintf(f, "store %d\n", res);
+                    // printf("Storing %d\n", res);
+                    fprintf(f, "store %d\n", res);
                     *p = res;
                     push(res);
                 }
@@ -299,16 +315,21 @@ void interpret(FILE *f, bytefile *bf) {
                         }
                         break;
 
-                    case 2:; // BEGIN
-                    Function fun;
-                    fun.args = stack.sp;
-                    stack.sp += INT + 1;
-                    fun.variables = stack.sp;
-                    stack.sp += INT;
-                    function = fun;
-                    break;
+                    case 2: // BEGIN
+                    // fprintf(f, "BEGIN\n");
+                        ;Function *fun = malloc(sizeof(Function));
+                        fun->args = stack.sp;
+                        stack.sp += INT + 1; // args
+                            fun->saved_ip = pop();
+                        fun->variables = stack.sp;
+                        fun->c = fun->variables;
+                        stack.sp += INT; // local vars
+                        fun->prev = function;
+                        function = fun;
+                        break;
 
                     case 3:
+                        FAIL;
                         // fprintf(f, "CBEGIN\t%d ", INT);
                         // fprintf(f, "%d", INT);
                         break;
@@ -320,15 +341,20 @@ void interpret(FILE *f, bytefile *bf) {
                             for (int i = 0; i < n; i++) {
                                 switch (BYTE) {
                                     case 0:
+                        FAIL;
+
                                         // fprintf(f, "G(%d)", INT);
                                         break;
                                     case 1:
+                        FAIL;
                                         // fprintf(f, "L(%d)", INT);
                                         break;
                                     case 2:
+                        FAIL;
                                         // fprintf(f, "A(%d)", INT);
                                         break;
                                     case 3:
+                        FAIL;
                                         // fprintf(f, "C(%d)", INT);
                                         break;
                                     default:
@@ -339,24 +365,37 @@ void interpret(FILE *f, bytefile *bf) {
                         break;
 
                     case 5:
+                        FAIL;
+
                         // fprintf(f, "CALLC\t%d", INT);
                         break;
 
                     case 6:
-                        // fprintf(f, "CALL\t0x%.8x ", INT);
+                        res = pop();
+                        // fprintf(f, "CALL %d", remove_box(res));
+                        push(res);
+                        value = INT;
+                        n = INT;
+                        push(ip);
+                        push(0);
+                        ip = bf->code_ptr + value; // goto label
+                        stack.sp -= (n + 2); // count of args + ip
                         // fprintf(f, "%d", INT);
                         break;
 
                     case 7:
                         // fprintf(f, "TAG\t%s ", STRING);
                         // fprintf(f, "%d", INT);
+                        FAIL;
                         break;
 
                     case 8:
+                                            FAIL;
                         // fprintf(f, "ARRAY\t%d", INT);
                         break;
 
                     case 9:
+                        FAIL;
                         // fprintf(f, "FAIL\t%d", INT);
                         // fprintf(f, "%d", INT);
                         break;
@@ -372,32 +411,37 @@ void interpret(FILE *f, bytefile *bf) {
 
             case 6:
                 switch (l) {
-
+                    FAIL;
                 }
                 // fprintf(f, "PATT\t%s", pats[l]);
                 break;
 
-            case 7: {
+            case 7: { // Builtin
                 switch (l) {
                     case 0:
                         res = Lread();
                         // printf("Reading %d\n", res);
-                        push(res);
                         break;
                     case 1:
-                        Lwrite(pop());
+                        res = Lwrite(pop());
                         break;
 
                     case 2:
-                        Llength(pop());
+                        printf("Length %d\n", res);
+                        res = Llength(pop());
                         break;
 
                     case 3:
-                        Lstring(pop());
+                        res = Lstring(pop());
                         break;
 
                     case 4:
-                        n = pop();
+                        n = INT;
+                        for (int i = 0; i < n; i++) {
+
+                        }
+                        Barray();
+                        FAIL;
                         // TODO where to get values to array
 //                        Barray(pop());
                         break;
@@ -405,6 +449,7 @@ void interpret(FILE *f, bytefile *bf) {
                     default:
                         FAIL;
                 }
+                push(res);
             }
                 break;
 
@@ -416,7 +461,6 @@ void interpret(FILE *f, bytefile *bf) {
     } while (1);
     stop:
         destruct();
-    // fprintf(f, "<end>\n");
 }
 
 int main(int argc, char *argv[]) {
