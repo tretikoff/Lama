@@ -112,6 +112,16 @@ int make_hash (char *s) {
   return make_box(h);
 }
 
+int check_tag (void *d, int t, int n) {
+//   if (UNBOXED(d)) return BOX(0);
+  data * r = TO_DATA(d);
+//   printf("%d %d %d %d %d %d",
+//    TAG(r->tag), SEXP_TAG,
+//     TO_SEXP(d)->tag, t, LEN(r->tag), n);
+    return make_box(TAG(r->tag) == SEXP_TAG && TO_SEXP(d)->tag == t && LEN(r->tag) == n);
+}
+
+
 Stack stack = {NULL, NULL};
 Function *function = NULL;
 
@@ -136,37 +146,34 @@ void destruct() {
 }
 
 
-void make_array(int n) {
+void* make_array(int n) {
     int     i, ai; 
-  data    *r; 
-  r = (data*) malloc (sizeof(int) * (n+1));
-  r->tag = ARRAY_TAG | (n << 3);
-  
-  for (i = 0; i<n; i++) {
-    ((int*)r->contents)[i] = pop();
-  }
-  return r->contents;
+    data    *r; 
+    r = (data*) malloc (sizeof(int) * (n+1));
+    r->tag = ARRAY_TAG | (n << 3);
+    
+    for (i = n -1; i >=0; i--) {
+        ((int*)r->contents)[i] = pop();
+    }
+    return r->contents;
 }
 
-void* make_sexp (int n, int hash) { 
+void* make_sexp (int n, int hash) {
+    // printf("with hash %d", hash);
   int     i, ai;  
-  size_t *p;  
   sexp   *r;  
   data   *d;  
-  r = (sexp*) malloc (sizeof(int) * (n+1));
-  d = &(r->contents);
-  r->tag = 0;
-    
-  d->tag = SEXP_TAG | ((n-1) << 3);
+  r = (sexp*) malloc (sizeof(int) * (n + 2));
+  d = &(r->contents);    
+  d->tag = SEXP_TAG | (n << 3);
 
-  for (i=0; i<n-1; i++) {
-    ai = pop();
-    p = (size_t*) ai;
-    ((int*)d->contents)[i] = ai;
+  for (i=n - 1; i>= 0; i--) {
+    ((int*)d->contents)[i] = pop();
   }
 
-  r->tag = remove_box(hash);
+  r->tag = hash;
 
+    // printf("checking %d", d);
   return d->contents;
 }
 
@@ -252,10 +259,10 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
 
                     case 2: // SEXP
-                        ;int hash = make_hash(STRING);
-                        n = INT;
-                        
-                        push(make_sexp(n + 1, hash));
+                        ;char* s = STRING;
+                        int hash = make_hash(s);
+                        n = INT;                        
+                        push(make_sexp(n, hash));
                         break;
 
                     case 3: // STI
@@ -455,10 +462,10 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
 
                     case 7: // TAG
-                        // fprintf(log, "TAG\t%s ", STRING);
-                        // fprintf(log, "%d", INT);
-                        res = make_hash(STRING);
-                        push(Btag(pop(), res, make_box(INT)));
+                        value = make_hash(STRING);
+                        n = INT;
+                        res = check_tag(pop(), value, n);
+                        push(res);
                         break;
 
                     case 8:
@@ -508,8 +515,8 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         res = Lstring(pop());
                         break;
 
-                    case 4:
-                        make_array(INT);
+                    case 4: // ARRAY
+                        res = make_array(INT);
                         break;
 
                     default:

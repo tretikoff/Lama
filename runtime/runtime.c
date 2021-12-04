@@ -52,18 +52,11 @@ void __post_gc_subst () {}
 /* end */
 
 
-# define LEN(x) ((x & 0xFFFFFFF8) >> 3)
-# define TAG(x)  (x & 0x00000007)
 
-# define TO_DATA(x) ((data*)((char*)(x)-sizeof(int)))
-# define TO_SEXP(x) ((sexp*)((char*)(x)-2*sizeof(int)))
+
 #ifdef DEBUG_PRINT // GET_SEXP_TAG is necessary for printing from space
 # define GET_SEXP_TAG(x) (LEN(x))
 #endif
-
-# define UNBOXED(x)  (((int) (x)) &  0x0001)
-# define UNBOX(x)    (((int) (x)) >> 1)
-# define BOX(x)      ((((int) (x)) << 1) | 0x0001)
 
 /* GC extra roots */
 #define MAX_EXTRA_ROOTS_NUMBER 32
