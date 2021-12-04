@@ -51,11 +51,6 @@ void __post_gc_subst () {}
 # endif
 /* end */
 
-# define STRING_TAG  0x00000001
-# define ARRAY_TAG   0x00000003
-# define SEXP_TAG    0x00000005
-# define CLOSURE_TAG 0x00000007 
-# define UNBOXED_TAG 0x00000009 // Not actually a tag; used to return from LkindOf
 
 # define LEN(x) ((x & 0xFFFFFFF8) >> 3)
 # define TAG(x)  (x & 0x00000007)
@@ -156,15 +151,6 @@ void Lassert (void *f, char *s, ...) {
   do if (!UNBOXED(x) && TAG(TO_DATA(x)->tag) \
 	 != STRING_TAG) failure ("string value expected in %s\n", memo); while (0)
 
-typedef struct {
-  int tag; 
-  char contents[0];
-} data; 
-
-typedef struct {
-  int tag; 
-  data contents; 
-} sexp;
 
 extern void* alloc    (size_t);
 extern void* Bsexp    (int n, ...);
@@ -911,14 +897,10 @@ extern void* LmakeString (int length) {
   data *r;
 
   ASSERT_UNBOXED("makeString", length);
-  
-  __pre_gc () ;
-  
+    
   r = (data*) alloc (n + 1 + sizeof (int));
 
   r->tag = STRING_TAG | (n << 3);
-
-  __post_gc();
   
   return r->contents;
 }
