@@ -12,6 +12,7 @@
 void *__start_custom_data;
 void *__stop_custom_data;
 
+
 /* The unpacked representation of bytecode file */
 typedef struct {
     char *string_ptr;              /* A pointer to the beginning of the string table */
@@ -90,7 +91,6 @@ typedef struct {
     int *sp;
 } Stack;
 
-static char* chars = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'";
 int make_hash (char *s) {
   char *p;
   int  h = 0, limit = 0;
@@ -108,6 +108,11 @@ int make_hash (char *s) {
 
     p++;
   }
+
+  if (strcmp (s, de_hash (h)) != 0) {
+    failure ("%s <-> %s\n", s, de_hash(h));
+  }
+  
   
   return make_box(h);
 }
@@ -248,13 +253,8 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
 
                     case 1: // STRING
-                        ; void* p = STRING;
-                        int   n = strlen (p);
-                        data *r = (data*) malloc (n + 1 + sizeof (int));
-                        r->tag = STRING_TAG | (n << 3);
-
-                        strncpy (r->contents, p, n + 1);
-                        push(r->contents);
+                        ; res = make_string(STRING);
+                        push(res);
                         // fprintf(f, "string %s\n", r->contents);
                         break;
 
@@ -512,7 +512,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
 
                     case 3:
-                        res = Lstring(pop());
+                        res = make_lstring(pop());
                         break;
 
                     case 4: // ARRAY

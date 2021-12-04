@@ -41,6 +41,61 @@ typedef struct {
   data contents; 
 } sexp;
 
+typedef struct {
+  char *contents;
+  int ptr;
+  int len;
+} StringBuf;
+
+static StringBuf stringBuf;
+
+# define STRINGBUF_INIT 128
+
+static void createStringBuf () {
+  stringBuf.contents = (char*) malloc (STRINGBUF_INIT);
+  stringBuf.ptr      = 0;
+  stringBuf.len      = STRINGBUF_INIT;
+}
+
+static void deleteStringBuf () {
+  free (stringBuf.contents);
+}
+
+static void extendStringBuf () {
+  int len = stringBuf.len << 1;
+
+  stringBuf.contents = (char*) realloc (stringBuf.contents, len);
+  stringBuf.len      = len;
+}
+
+static void vprintStringBuf (char *fmt, va_list args) {
+  int     written = 0,
+          rest    = 0;
+  char   *buf     = (char*) BOX(NULL);
+
+ again:
+  buf     = &stringBuf.contents[stringBuf.ptr];
+  rest    = stringBuf.len - stringBuf.ptr;
+  written = vsnprintf (buf, rest, fmt, args);
+  
+  if (written >= rest) {
+    extendStringBuf ();
+    goto again;
+  }
+
+  stringBuf.ptr += written;
+}
+
+static void printStringBuf (char *fmt, ...) {
+  va_list args;
+
+  va_start (args, fmt);
+  vprintStringBuf (fmt, args);
+}
+
+static char* chars = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'";
+extern char* de_hash (int);
+
 
 
 # endif
