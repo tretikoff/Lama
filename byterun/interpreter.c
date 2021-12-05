@@ -507,7 +507,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
             case 6: // PATT
                 switch (l) {
                     case 0: res = Bstring_patt(pop(), pop()); break;
-                    case 1: res = Bstring_tag_patt(pop());
+                    case 1: res = Bstring_tag_patt(pop()); break;
                     case 2: res = Barray_tag_patt(pop()); break;
                     case 5: res = Bunboxed_patt(pop()); break;
                     case 6: res = Bclosure_tag_patt(pop()); break;
