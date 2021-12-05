@@ -79,9 +79,9 @@ bytefile *read_file(char *fname) {
 typedef struct Function Function;
 
 struct Function {
-    int *variables;
+    int *vars;
     int *args;
-    int *c; // whatever this is
+    int *acc;
     char* saved_ip;
     Function *prev;
 };
@@ -118,8 +118,8 @@ int make_hash (char *s) {
 }
 
 int check_tag (void *d, int t, int n) {
-//   if (UNBOXED(d)) return BOX(0);
   data * r = TO_DATA(d);
+    if (UNBOXED(d)) return BOX(0);
 //   printf("%d %d %d %d %d %d",
 //    TAG(r->tag), SEXP_TAG,
 //     TO_SEXP(d)->tag, t, LEN(r->tag), n);
@@ -182,6 +182,26 @@ void* make_sexp (int n, int hash) {
   return d->contents;
 }
 
+void* make_closure (int n, void *entry) {
+  int     i, ai;
+  data    *r; 
+  
+  r = (data*) malloc (sizeof(int) * (n+2));
+  
+  r->tag = CLOSURE_TAG | ((n + 1) << 3);
+  ((void**) r->contents)[0] = entry;
+  
+  for (i = 0; i<n; i++) {
+        ai = pop();
+        ((int*)r->contents)[i+1] = ai;
+        // printf("Closure %d\n", ai);
+  }
+
+
+  return r->contents;
+}
+
+
 
 /* Disassembles the bytecode pool */
 void interpret(FILE *f, bytefile *bf, FILE* log) {
@@ -201,8 +221,9 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
         char x = BYTE,
                 h = (x & 0xF0) >> 4,
                 l = x & 0x0F;
-        int a, b, value, res, n;
+        int a, b, value, res, n, pos;
         int *p;
+        Function *fun;
 
         // fprintf(log, "pppp%d %d\n", h, l);
         switch (h) {
@@ -255,7 +276,6 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                     case 1: // STRING
                         ; res = make_string(STRING);
                         push(res);
-                        // fprintf(f, "string %s\n", r->contents);
                         break;
 
                     case 2: // SEXP
@@ -263,14 +283,6 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         int hash = make_hash(s);
                         n = INT;                        
                         push(make_sexp(n, hash));
-                        break;
-
-                    case 3: // STI
-                        // TODO how?
-                        // fprintf(log, "STI");
-                        a = pop();
-                        b = pop();
-                        push(a);
                         break;
 
                     case 4: // STA
@@ -293,14 +305,6 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         ip = function->saved_ip;
                         function = function->prev;
                         push(res);
-                        // fprintf(log, "END");
-                        break;
-
-                    case 7: // RET
-                        FAIL;
-                        // TODO 
-                        return;
-                        // fprintf(log, "RET");
                         break;
 
                     case 8: // DROP
@@ -344,20 +348,23 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
                     case 1: // L
                         // fprintf(log, "local ");
-                        p = function->variables + INT;
+                        p = function->vars + INT;
                         break;
                     case 2: // A
                         // fprintf(log, "arg ");
                         p = function->args + INT;
                         break;
                     case 3: // C
-                        p = function->c + INT;
+                        p = *(function->acc + INT);
                         break;
                     default:
                         FAIL;
                 }
                 if (h == 2) { //LD
                     value = *p;
+                    if (l == 3) {
+                        // printf("loading %d\n", value);
+                    }
                     // fprintf(f, "Loading %d\n", remove_box(value));
                     push(value);
                 } else if (h == 3) {
@@ -391,58 +398,67 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         break;
 
                     case 2: // BEGIN
-                    // fprintf(log, "BEGIN\n");
-                        ;Function *fun = malloc(sizeof(Function));
+                        // fprintf(log, "BEGIN\n");
+                        fun = malloc(sizeof(Function));
                         fun->args = stack.sp;
                         stack.sp += INT + 1; // args
-                            fun->saved_ip = pop();
-                        fun->variables = stack.sp;
-                        fun->c = fun->variables;
+                        fun->saved_ip = pop();
+                        fun->vars = stack.sp;
+                        fun->acc = fun->vars;
                         stack.sp += INT; // local vars
                         fun->prev = function;
                         function = fun;
                         break;
 
-                    case 3:
-                        FAIL;
-                        // fprintf(log, "CBEGIN\t%d ", INT);
-                        // fprintf(log, "%d", INT);
+                    case 3: // CBEGIN
+                        fun = malloc(sizeof(Function));
+                        n = INT;
+                        // printf("CBEGIN %d\n", n);
+                        fun->args = stack.sp;
+                        stack.sp += n + 2;
+                        int nn = pop();
+                        fun->saved_ip = pop();
+                        stack.sp += 2;
+                        fun->acc = stack.sp;
+                        stack.sp += nn;
+                        fun->vars = stack.sp;
+                        stack.sp += INT;
+                        fun->prev = function;
+                        function = fun;
                         break;
 
                     case 4:
-                        // fprintf(log, "CLOSURE\t0x%.8x", INT);
-                        {
-                            int n = INT;
-                            for (int i = 0; i < n; i++) {
-                                switch (BYTE) {
-                                    case 0:
-                        FAIL;
-
-                                        // fprintf(log, "G(%d)", INT);
-                                        break;
-                                    case 1:
-                        FAIL;
-                                        // fprintf(log, "L(%d)", INT);
-                                        break;
-                                    case 2:
-                        FAIL;
-                                        // fprintf(log, "A(%d)", INT);
-                                        break;
-                                    case 3:
-                        FAIL;
-                                        // fprintf(log, "C(%d)", INT);
-                                        break;
-                                    default:
-                                        FAIL;
-                                }
+                        pos = INT;
+                        n = INT;
+                        for (int i = 0; i < n; i++) {
+                            switch (BYTE) {
+                                case 0: res = *(bf->global_ptr + INT); break;
+                                case 1: res = *(function->vars + INT); break;
+                                case 2: res = *(function->args + INT); break;
+                                case 3: res = *(int*)*(function->acc + INT); break;
+                                default: FAIL;
                             }
-                        };
+                            push(res);
+                        }
+                        push(make_closure(n, pos));
                         break;
 
-                    case 5:
-                        FAIL;
+                    case 5: // CALLC
+                        n = INT;
+                        data* d = TO_DATA(*(stack.sp - n - 1));
 
-                        // fprintf(log, "CALLC\t%d", INT);
+                        memmove(stack.sp - n - 1, stack.sp - n, n * sizeof(int));
+                        stack.sp--;
+                        int offset = *(int*)d->contents;
+                        int accN = LEN(d->tag) - 1;
+                        push(ip);
+                        push(accN);
+                        for (int i = accN - 1; i >= 0; i--) {
+                            push(((int*)d->contents) + i + 1);
+                        }
+                        ip = bf->code_ptr + offset;
+                        stack.sp -= accN+n+2;
+                        // printf("CALLC %d %d\n", accN, n);
                         break;
 
                     case 6:
@@ -468,18 +484,18 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         push(res);
                         break;
 
-                    case 8:
-                                            FAIL;
-                        //fprintf(log, "ARRAY\t%d", INT);
+                    case 8: // ARRAY PATT
+                        n = make_box(INT);
+                        push(Barray_patt(pop(), n));
                         break;
 
-                    case 9:
-                        FAIL;
-                        // fprintf(log, "FAIL\t%d", INT);
-                        // fprintf(log, "%d", INT);
+                    case 9: // FAIL
+                        a = make_box(INT);
+                        b = make_box(INT);
+                        Bmatch_failure(pop(), "", a, b);
                         break;
 
-                    case 10:
+                    case 10: // LINE
                         INT;
                         break;
 
@@ -488,11 +504,16 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                 }
                 break;
 
-            case 6:
+            case 6: // PATT
                 switch (l) {
-                    FAIL;
+                    case 0: res = Bstring_patt(pop(), pop()); break;
+                    case 1: res = Bstring_tag_patt(pop());
+                    case 2: res = Barray_tag_patt(pop()); break;
+                    case 5: res = Bunboxed_patt(pop()); break;
+                    case 6: res = Bclosure_tag_patt(pop()); break;
+                    default: FAIL;
                 }
-                // fprintf(log, "PATT\t%s", pats[l]);
+                push(res);
                 break;
 
             case 7: { // Builtin
