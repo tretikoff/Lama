@@ -148,11 +148,10 @@ int* stack_end = NULL;
 const int stack_capacity = 1000000;
 int pop() {
     if (stack.sp == stack_start) {
-        if (stack.sp == stack_start) {
-            failure("Pop from empty stack\n")
-        }
+        failure("Pop from empty stack\n");
     }
     stack.sp--;
+    __gc_stack_top = stack.sp;
     int ret = *stack.sp;
     return ret;
 }
@@ -163,12 +162,15 @@ void push(int v) {
     }
     *stack.sp = v;
     stack.sp++;
+    __gc_stack_top = stack.sp;
 }
 
 void init() {
+    __gc_init();
     stack.mem = malloc(stack_capacity * sizeof(int));
     stack.sp = stack.mem;
     stack_start = stack.sp;
+    __gc_stack_bottom = stack.sp;
     stack_end = stack.sp + stack_capacity;
 }
 
