@@ -12,6 +12,20 @@
 void *__start_custom_data;
 void *__stop_custom_data;
 
+enum opcode {
+    CONST, STRIN, SEXP, STI, STA, JMP, END, RET, DROP, DUP, SWAP, ELEM
+};
+enum placement {GLOB, LOC, ARGS, ACC};
+enum Lds {LD = 2, LDA = 3, ST = 4};
+enum builtin { LREAD, LWRITE, LLENGTH, LSTRING, LARRAY };
+
+enum tag {TSTR, TSTRTYPE, TARR, TSEXP, TREF, TVAL, TFUN};
+enum control {CJMPz, CJMPnz, BEGIN, CBEGIN, CLOSURE, CALLC, CALL, TAG, PARRAY, PFAIL, LINE};
+
+enum opps {BINOP, STOR, CONTR=5, PATT=6, BUILTIN=7, E_O_F = 15};
+
+enum binops {BADD,BSUB,BMUL,BDIV,BMOD,BLT,BLTE,BGT,BGTE,BEQ,BNEQ,BAND,BOR};
+
 
 /* The unpacked representation of bytecode file */
 typedef struct {
@@ -228,75 +242,63 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
         // fprintf(log, "pppp%d %d\n", h, l);
         switch (h) {
             // fprintf(log, "dddd%d\n", h);
-            case 15:
+            case E_O_F:
                 goto stop;
 
-            case 0: /* BINOP */
+            case BINOP:
                 b = remove_box(pop());
                 a = remove_box(pop());
                 res = 0;
-                char *op = ops[l - 1];
-                if (strcmp(op, "+") == 0) {
-                    res = a + b;
-                } else if (strcmp(op, "-") == 0) {
-                    res = a - b;
-                } else if (strcmp(op, "*") == 0) {
-                    res = a * b;
-                } else if (strcmp(op, "/") == 0) {
-                    res = a / b;
-                } else if (strcmp(op, "%") == 0) {
-                    res = a % b;
-                } else if (strcmp(op, "<") == 0) {
-                    res = a < b;
-                } else if (strcmp(op, "<=") == 0) {
-                    res = a <= b;
-                } else if (strcmp(op, ">") == 0) {
-                    res = a > b;
-                } else if (strcmp(op, ">=") == 0) {
-                    res = a >= b;
-                } else if (strcmp(op, "==") == 0) {
-                    res = a == b;
-                } else if (strcmp(op, "!=") == 0) {
-                    res = a != b;
-                } else if (strcmp(op, "&&") == 0) {
-                    res = a && b;
-                } else if (strcmp(op, "!!") == 0) {
-                    res = a || b;
+                switch(l-1) {
+                    case BADD: res = a + b; break;
+                    case BSUB: res = a - b; break;
+                    case BMUL: res = a * b; break;
+                    case BDIV: res = a / b; break;
+                    case BMOD: res = a % b; break;
+                    case BLT: res = a < b; break;
+                    case BLTE: res = a <= b; break;
+                    case BGT: res = a > b; break;
+                    case BGTE: res = a >= b; break;
+                    case BEQ: res = a == b; break;
+                    case BNEQ: res = a != b; break;
+                    case BAND: res = a && b; break;
+                    case BOR: res = a || b; break;
                 }
+                char *op = ops[l - 1];
                 push(make_box(res));
                 // fprintf(log, "binop %d %s %d == %d\n", a, op, b, res);
                 break;
 
-            case 1:
+            case STOR:
                 switch (l) {
-                    case 0: // CONST
+                    case CONST:
                         push(make_box(INT));
                         break;
 
-                    case 1: // STRING
+                    case STRIN:
                         ; res = make_string(STRING);
                         push(res);
                         break;
 
-                    case 2: // SEXP
+                    case SEXP:
                         ;char* s = STRING;
                         int hash = make_hash(s);
                         n = INT;                        
                         push(make_sexp(n, hash));
                         break;
 
-                    case 4: // STA
+                    case STA:
                         value = pop();
                         int i = pop();
                         int place = pop();
                         push(Bsta(value, i, place));
                         break;
 
-                    case 5: // JMP
+                    case JMP:
                         ip = bf->code_ptr + INT;
                         break;
 
-                    case 6: // END
+                    case END:
                         if (function->prev == NULL) {
                             return;
                         }
@@ -307,24 +309,24 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         push(res);
                         break;
 
-                    case 8: // DROP
+                    case DROP:
                         pop();
                         break;
 
-                    case 9: // DUP
+                    case DUP:
                         value = pop();
                         push(value);
                         push(value);
                         break;
 
-                    case 10: //SWAP
+                    case SWAP:
                         a = pop();
                         b = pop();
                         push(b);
                         push(a);
                         break;
 
-                    case 11: // ELEM
+                    case ELEM:
                         b = pop();
                         a = pop();
                         push(Belem(a, b));
@@ -336,41 +338,41 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                 }
                 break;
 
-            case 2: // LD
-            case 3: // LDA
-            case 4: // ST
+            case LD:
+            case LDA:
+            case ST:
                 // fprintf(log, "%d %d\n", h, l);
                 p = 0;
                 switch (l) {
-                    case 0: // G
+                    case GLOB:
                         // fprintf(log, "global ");
                         p = bf->global_ptr + INT;
                         break;
-                    case 1: // L
+                    case LOC:
                         // fprintf(log, "local ");
                         p = function->vars + INT;
                         break;
-                    case 2: // A
+                    case ARGS:
                         // fprintf(log, "arg ");
                         p = function->args + INT;
                         break;
-                    case 3: // C
+                    case ACC:
                         p = *(function->acc + INT);
                         break;
                     default:
                         FAIL;
                 }
-                if (h == 2) { //LD
+                if (h == LD) {
                     value = *p;
                     if (l == 3) {
                         // printf("loading %d\n", value);
                     }
                     // fprintf(f, "Loading %d\n", remove_box(value));
                     push(value);
-                } else if (h == 3) {
+                } else if (h == LDA) {
                     push(p);
                     push(p);
-                } else if (h == 4) {//ST
+                } else if (h == ST) {
                     res = pop();
                     // printf("Storing %d\n", res);
                     // fprintf(log, "store %d\n", res);
@@ -379,9 +381,9 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                 }
                 break;
 
-            case 5:
+            case CONTR:
                 switch (l) {
-                    case 0: // CJMPz
+                    case CJMPz:
                         value = remove_box(pop());
                         res = INT;
                         if (!value) {
@@ -389,7 +391,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         }
                         break;
 
-                    case 1: // CJMPnz
+                    case CJMPnz:
                         value = remove_box(pop());
                         res = INT;
                         if (value) {
@@ -397,7 +399,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         }
                         break;
 
-                    case 2: // BEGIN
+                    case BEGIN:
                         // fprintf(log, "BEGIN\n");
                         fun = malloc(sizeof(Function));
                         fun->args = stack.sp;
@@ -410,7 +412,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         function = fun;
                         break;
 
-                    case 3: // CBEGIN
+                    case CBEGIN:
                         fun = malloc(sizeof(Function));
                         n = INT;
                         // printf("CBEGIN %d\n", n);
@@ -427,7 +429,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         function = fun;
                         break;
 
-                    case 4:
+                    case CLOSURE:
                         pos = INT;
                         n = INT;
                         for (int i = 0; i < n; i++) {
@@ -443,7 +445,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         push(make_closure(n, pos));
                         break;
 
-                    case 5: // CALLC
+                    case CALLC:
                         n = INT;
                         data* d = TO_DATA(*(stack.sp - n - 1));
 
@@ -461,7 +463,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         // printf("CALLC %d %d\n", accN, n);
                         break;
 
-                    case 6:
+                    case CALL:
                         // fprintf(log, "CALL %d", remove_box(res));
                         value = INT;
                         n = INT;
@@ -477,25 +479,25 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                         // fprintf(log, "%d", INT);
                         break;
 
-                    case 7: // TAG
+                    case TAG:
                         value = make_hash(STRING);
                         n = INT;
                         res = check_tag(pop(), value, n);
                         push(res);
                         break;
 
-                    case 8: // ARRAY PATT
+                    case PARRAY:
                         n = make_box(INT);
                         push(Barray_patt(pop(), n));
                         break;
 
-                    case 9: // FAIL
+                    case PFAIL:
                         a = make_box(INT);
                         b = make_box(INT);
                         Bmatch_failure(pop(), "", a, b);
                         break;
 
-                    case 10: // LINE
+                    case LINE:
                         INT;
                         break;
 
@@ -504,7 +506,7 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                 }
                 break;
 
-            case 6: // PATT
+            case PATT: 
                 switch (l) {
                     case 0: res = Bstring_patt(pop(), pop()); break;
                     case 1: res = Bstring_tag_patt(pop()); break;
@@ -516,27 +518,27 @@ void interpret(FILE *f, bytefile *bf, FILE* log) {
                 push(res);
                 break;
 
-            case 7: { // Builtin
+            case BUILTIN: {
                 switch (l) {
-                    case 0:
+                    case LREAD:
                         res = Lread();
                         // fprintf(log, "Reading %d\n", res);
                         break;
-                    case 1:
+                    case LWRITE:
                         res = Lwrite(pop());
                         // fprintf(log, "wrote %d\n", res);
                         break;
 
-                    case 2:
+                    case LLENGTH:
                         // fprintf(f, "Length %d\n", res);
                         res = Llength(pop());
                         break;
 
-                    case 3:
+                    case LSTRING:
                         res = make_lstring(pop());
                         break;
 
-                    case 4: // ARRAY
+                    case LARRAY:
                         res = make_array(INT);
                         break;
 
