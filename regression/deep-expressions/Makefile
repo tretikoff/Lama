@@ -8,6 +8,7 @@ check: $(TESTS)
 
 $(TESTS): %: %.lama
 	@echo $@
+	@LAMA=../../runtime $(LAMAC) -b $< && cat $@.input | ../../byterun/interpreter $@.bc > $@.log && diff $@.log orig/$@.log
 	@LAMA=../../runtime $(LAMAC) $< && cat $@.input | ./$@ > $@.log && diff $@.log orig/$@.log
 	@cat $@.input | $(LAMAC) -i $< > $@.log && diff $@.log orig/$@.log
 	@cat $@.input | $(LAMAC) -s $< > $@.log && diff $@.log orig/$@.log

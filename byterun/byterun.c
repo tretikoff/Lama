@@ -3,7 +3,7 @@
 # include <string.h>
 # include <stdio.h>
 # include <errno.h>
-# include <malloc.h>
+# include <stdlib.h>
 # include "../runtime/runtime.h"
 
 void *__start_custom_data;

@@ -51,24 +51,13 @@ void __post_gc_subst () {}
 # endif
 /* end */
 
-# define STRING_TAG  0x00000001
-# define ARRAY_TAG   0x00000003
-# define SEXP_TAG    0x00000005
-# define CLOSURE_TAG 0x00000007 
-# define UNBOXED_TAG 0x00000009 // Not actually a tag; used to return from LkindOf
 
-# define LEN(x) ((x & 0xFFFFFFF8) >> 3)
-# define TAG(x)  (x & 0x00000007)
 
-# define TO_DATA(x) ((data*)((char*)(x)-sizeof(int)))
-# define TO_SEXP(x) ((sexp*)((char*)(x)-2*sizeof(int)))
+
 #ifdef DEBUG_PRINT // GET_SEXP_TAG is necessary for printing from space
 # define GET_SEXP_TAG(x) (LEN(x))
 #endif
 
-# define UNBOXED(x)  (((int) (x)) &  0x0001)
-# define UNBOX(x)    (((int) (x)) >> 1)
-# define BOX(x)      ((((int) (x)) << 1) | 0x0001)
 
 /* GC extra roots */
 #define MAX_EXTRA_ROOTS_NUMBER 32
@@ -156,15 +145,6 @@ void Lassert (void *f, char *s, ...) {
   do if (!UNBOXED(x) && TAG(TO_DATA(x)->tag) \
 	 != STRING_TAG) failure ("string value expected in %s\n", memo); while (0)
 
-typedef struct {
-  int tag; 
-  char contents[0];
-} data; 
-
-typedef struct {
-  int tag; 
-  data contents; 
-} sexp;
 
 extern void* alloc    (size_t);
 extern void* Bsexp    (int n, ...);
@@ -332,132 +312,20 @@ extern int Llength (void *p) {
   return BOX(LEN(a->tag));
 }
 
-static char* chars = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'";
-
-extern char* de_hash (int);
-
-extern int LtagHash (char *s) {
-  char *p;
-  int  h = 0, limit = 0;
-               
-  p = s;
-
-  while (*p && limit++ < 4) {
-    char *q = chars;
-    int pos = 0;
-    
-    for (; *q && *q != *p; q++, pos++);
-
-    if (*q) h = (h << 6) | pos;    
-    else failure ("tagHash: character not found: %c\n", *p);
-
-    p++;
-  }
-
-  if (strcmp (s, de_hash (h)) != 0) {
-    failure ("%s <-> %s\n", s, de_hash(h));
-  }
-  
-  return BOX(h);
-}
-
-char* de_hash (int n) {
-  //  static char *chars = (char*) BOX (NULL);
-  static char buf[6] = {0,0,0,0,0,0};
-  char *p = (char *) BOX (NULL);
-  p = &buf[5];
-
-#ifdef DEBUG_PRINT
-  indent++; print_indent ();
-  printf ("de_hash: tag: %d\n", n); fflush (stdout);
-#endif
-  
-  *p-- = 0;
-
-  while (n != 0) {
-#ifdef DEBUG_PRINT
-    print_indent ();
-    printf ("char: %c\n", chars [n & 0x003F]); fflush (stdout);
-#endif
-    *p-- = chars [n & 0x003F];
-    n = n >> 6;
-  }
-
-#ifdef DEBUG_PRINT
-  indent--;
-#endif
-  
-  return ++p;
-}
-
-typedef struct {
-  char *contents;
-  int ptr;
-  int len;
-} StringBuf;
-
-static StringBuf stringBuf;
-
-# define STRINGBUF_INIT 128
-
-static void createStringBuf () {
-  stringBuf.contents = (char*) malloc (STRINGBUF_INIT);
-  stringBuf.ptr      = 0;
-  stringBuf.len      = STRINGBUF_INIT;
-}
-
-static void deleteStringBuf () {
-  free (stringBuf.contents);
-}
-
-static void extendStringBuf () {
-  int len = stringBuf.len << 1;
-
-  stringBuf.contents = (char*) realloc (stringBuf.contents, len);
-  stringBuf.len      = len;
-}
-
-static void vprintStringBuf (char *fmt, va_list args) {
-  int     written = 0,
-          rest    = 0;
-  char   *buf     = (char*) BOX(NULL);
-
- again:
-  buf     = &stringBuf.contents[stringBuf.ptr];
-  rest    = stringBuf.len - stringBuf.ptr;
-  written = vsnprintf (buf, rest, fmt, args);
-  
-  if (written >= rest) {
-    extendStringBuf ();
-    goto again;
-  }
-
-  stringBuf.ptr += written;
-}
-
-static void printStringBuf (char *fmt, ...) {
-  va_list args;
-
-  va_start (args, fmt);
-  vprintStringBuf (fmt, args);
-}
-
-int is_valid_heap_pointer (void *p);
 
 static void printValue (void *p) {
   data *a = (data*) BOX(NULL);
   int i   = BOX(0);
-  if (UNBOXED(p)) printStringBuf ("%d", UNBOX(p));
+  if (UNBOXED(p)) {
+    //   printf("!!!unboxed\n");
+       printStringBuf ("%d", UNBOX(p));
+  }
   else {
-    if (! is_valid_heap_pointer(p)) {
-      printStringBuf ("0x%x", p);
-      return;
-    }
-    
     a = TO_DATA(p);
 
     switch (TAG(a->tag)) {      
     case STRING_TAG:
+        // printf("String tag\n");
       printStringBuf ("\"%s\"", a->contents);
       break;
 
@@ -482,11 +350,8 @@ static void printValue (void *p) {
       break;
       
     case SEXP_TAG: {
-#ifndef DEBUG_PRINT
-      char * tag = de_hash (TO_SEXP(p)->tag);
-#else
-      char * tag = de_hash (GET_SEXP_TAG(TO_SEXP(p)->tag));
-#endif      
+      char * tag = de_hash (UNBOX(TO_SEXP(p)->tag));
+    // printf("Dehashed %s",tag);
       
       if (strcmp (tag, "cons") == 0) {
 	data *b = a;
@@ -524,6 +389,33 @@ static void printValue (void *p) {
     }
   }
 }
+
+extern int LtagHash (char *s) {
+  char *p;
+  int  h = 0, limit = 0;
+               
+  p = s;
+
+  while (*p && limit++ < 4) {
+    char *q = chars;
+    int pos = 0;
+    
+    for (; *q && *q != *p; q++, pos++);
+
+    if (*q) h = (h << 6) | pos;    
+    else failure ("tagHash: character not found: %c\n", *p);
+
+    p++;
+  }
+
+  if (strcmp (s, de_hash (h)) != 0) {
+    failure ("%s <-> %s\n", s, de_hash(h));
+  }
+  
+  return BOX(h);
+}
+
+int is_valid_heap_pointer (void *p);
 
 static void stringcat (void *p) {
   data *a;
@@ -911,14 +803,10 @@ extern void* LmakeString (int length) {
   data *r;
 
   ASSERT_UNBOXED("makeString", length);
-  
-  __pre_gc () ;
-  
+    
   r = (data*) alloc (n + 1 + sizeof (int));
 
   r->tag = STRING_TAG | (n << 3);
-
-  __post_gc();
   
   return r->contents;
 }
@@ -971,6 +859,36 @@ extern void* Lstringcat (void *p) {
 
   return s;  
 }
+
+extern void* make_string(void *p) {
+    int   n = strlen (p);
+    data *r = (data*) malloc (n + 1 + sizeof (int));
+    r->tag = STRING_TAG | (n << 3);
+
+    strncpy (r->contents, p, n + 1);
+    return r->contents;
+}
+
+extern void* make_lstring (void *p) {
+  void *s = (void *) BOX (NULL);
+
+  __pre_gc () ;
+  
+  createStringBuf ();
+  printValue (p);
+
+  push_extra_root(&p);
+  // printf("Writing %s", stringBuf.contents);
+  s = make_string (stringBuf.contents);
+  pop_extra_root(&p);
+  
+  deleteStringBuf ();
+
+  __post_gc ();
+
+  return s;
+}
+
 
 extern void* Lstring (void *p) {
   void *s = (void *) BOX (NULL);
@@ -1660,6 +1578,36 @@ static void copy_elements (size_t *where, size_t *from, int len) {
 #endif
 
 }
+
+char* de_hash (int n) {
+  //  static char *chars = (char*) BOX (NULL);
+  static char buf[6] = {0,0,0,0,0,0};
+  char *p = (char *) BOX (NULL);
+  p = &buf[5];
+
+#ifdef DEBUG_PRINT
+  indent++; print_indent ();
+  printf ("de_hash: tag: %d\n", n); fflush (stdout);
+#endif
+  
+  *p-- = 0;
+
+  while (n != 0) {
+#ifdef DEBUG_PRINT
+    print_indent ();
+    printf ("char: %c\n", chars [n & 0x003F]); fflush (stdout);
+#endif
+    *p-- = chars [n & 0x003F];
+    n = n >> 6;
+  }
+
+#ifdef DEBUG_PRINT
+  indent--;
+#endif
+  
+  return ++p;
+}
+
 
 static int extend_spaces (void) {
   void *p = (void *) BOX (NULL);
