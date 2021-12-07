@@ -143,21 +143,33 @@ int check_tag (void *d, int t, int n) {
 
 Stack stack = {NULL, NULL};
 Function *function = NULL;
-
+int* stack_start = NULL;
+int* stack_end = NULL;
+const int stack_capacity = 1000000;
 int pop() {
+    if (stack.sp == stack_start) {
+        if (stack.sp == stack_start) {
+            failure("Pop from empty stack\n")
+        }
+    }
     stack.sp--;
     int ret = *stack.sp;
     return ret;
 }
 
 void push(int v) {
+    if (stack.sp == stack_end) {
+        failure("Stack overflow\n");
+    }
     *stack.sp = v;
     stack.sp++;
 }
 
 void init() {
-    stack.mem = malloc(1000000 * sizeof(int));
+    stack.mem = malloc(stack_capacity * sizeof(int));
     stack.sp = stack.mem;
+    stack_start = stack.sp;
+    stack_end = stack.sp + stack_capacity;
 }
 
 void destruct() {
